@@ -1,0 +1,23 @@
+# Core scientific stack
+numpy>=1.26
+pandas>=2.2
+scipy>=1.12
+pyarrow>=15.0
+
+# Stage 1: cascade forest base learners
+scikit-learn>=1.4
+xgboost>=2.0
+lightgbm>=4.3
+
+# Stage 2: ResNet-TS (GPU-capable).
+# torch is listed here for dependency resolution, but on Windows with a recent
+# NVIDIA GPU you should install the CUDA build explicitly BEFORE `pip install -r requirements.txt`,
+# see README "Environment setup". A CPU-only wheel is used as fallback if you skip that step.
+torch>=2.4
+
+# Plotting / reporting
+matplotlib>=3.8
+tabulate>=0.9  # pandas.DataFrame.to_markdown() backend, used by `run.py summary`
+
+# Tests
+pytest>=8.0

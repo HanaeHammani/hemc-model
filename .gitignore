@@ -1,0 +1,45 @@
+# Datasets: not ours to redistribute (HMR/GazeCom), and the RTC recordings
+# are private surgical-training data collected under informed consent -- not
+# for public release at all. Place any local copies under Data/ per README.
+Data/
+
+# Generated / regenerable artifacts
+cache/
+results/
+models/
+*.parquet
+*.npz
+*.pkl
+
+# Personal reference material -- not part of the reproducible pipeline,
+# kept locally only (Colab-specific paths, exploratory notebook).
+eye_movement_classification_clean-2.ipynb
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+log_*.txt

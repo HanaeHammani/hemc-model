@@ -1,0 +1,22 @@
+# Citation metadata for this repository (https://citation-file-format.github.io/).
+# TODO before publishing: fill in the placeholders below (authors, article
+# title, venue, year, DOI) once the HEMC article is accepted/published.
+cff-version: 1.2.0
+message: "If you use this code, please cite the article below."
+title: "HEMC: Hierarchical Eye Movement Classification"
+type: software
+authors:
+  - family-names: "TODO"
+    given-names: "TODO"
+    affiliation: "TODO"
+repository-code: "TODO: URL of this repository once published"
+license: MIT
+preferred-citation:
+  type: article
+  title: "TODO: HEMC article title"
+  authors:
+    - family-names: "TODO"
+      given-names: "TODO"
+  year: 2026
+  journal: "TODO: target venue, e.g. IEEE JBHI"
+  doi: "TODO"

@@ -38,7 +38,6 @@ def test_circular_arc_constant_speed():
 
     velocity = instantaneous_velocity(x, y, fs)
     expected_speed = r * w
-    # exclude the very first/last few samples where edge effects are largest
     assert np.allclose(velocity[5:-5], expected_speed, rtol=0.02)
 
 

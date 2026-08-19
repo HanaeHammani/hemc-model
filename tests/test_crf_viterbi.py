@@ -20,7 +20,6 @@ def test_viterbi_removes_isolated_flicker():
         log_proba[t] = np.log(0.05)
         log_proba[t, idx[c]] = np.log(0.9)
 
-    # inject isolated single-sample flickers (should be corrected by strong self-transition)
     flicker_positions = [5, 25, 45]
     for pos in flicker_positions:
         true_c = true_path[pos]
@@ -33,9 +32,6 @@ def test_viterbi_removes_isolated_flicker():
 
     decoded = viterbi_decode(log_proba, transition, class_names)
     n_errors = sum(1 for d, t in zip(decoded, true_path) if d != t)
-    # without correction there would be exactly len(flicker_positions) errors from
-    # the injected flickers alone; Viterbi with a strong self-transition prior
-    # should recover a smoother path with fewer or equal errors
     n_errors_no_correction = sum(1 for t, c in enumerate(true_path) if (np.array(log_proba[t]).argmax() != idx[c]))
     assert n_errors <= n_errors_no_correction
 
@@ -43,7 +39,7 @@ def test_viterbi_removes_isolated_flicker():
 def test_estimate_mean_durations_and_transition_matrix():
     class_names = ["A", "B"]
     fs_hz = 100.0
-    # A runs of 10 samples (100ms), B runs of 5 samples (50ms)
+    
     seqs = [["A"] * 10 + ["B"] * 5 + ["A"] * 10 + ["B"] * 5]
     seqs = [np.array(s) for s in seqs]
     durations = estimate_mean_durations_ms(seqs, class_names, fs_hz)
@@ -52,9 +48,7 @@ def test_estimate_mean_durations_and_transition_matrix():
 
     transition = build_transition_matrix(class_names, durations, fs_hz)
     assert transition.shape == (2, 2)
-    # rows sum to 1
     assert np.allclose(transition.sum(axis=1), 1.0)
-    # longer mean duration -> higher self-transition (stay) probability
     assert transition[0, 0] > transition[1, 1]
 
 

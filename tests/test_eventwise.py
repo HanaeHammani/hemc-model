@@ -22,7 +22,6 @@ def test_match_events_perfect_match():
 
 
 def test_oversegmentation_ratio_detects_fragmentation():
-    # true: one 30-sample fixation event
     true_labels = np.array(["F"] * 30)
     # pred: the same span fragmented into 3 short fixation events separated by
     # single-sample saccade blips (classic over-segmentation artifact)

@@ -1,28 +1,3 @@
-"""Dataset loading and group-aware splitting for GazeCom and HMR.
-
-Both datasets ship as tab-separated CSVs with columns::
-
-    X_coord    Y_coord    Confidence    Pattern
-
-with one row per gaze sample and no explicit timestamp column - both source
-papers report a fixed sampling rate per dataset (GazeCom: 250 Hz, HMR: 200 Hz),
-so sample index directly implies time via ``t = i / fs``.
-
-GazeCom stores one file per (participant, video) pair, e.g.
-``DATASET/data_gazecom/beach/AAF_beach.csv``. HMR stores one directory per
-participant with one file per eye, e.g. ``DATASET/data_hmr/user_1/eye_0.csv``.
-
-The label column ``Pattern`` uses single-character codes shared by both
-datasets: F(ixation), S(accade), P(smooth pursuit), B(link).
-
-Splitting: both source papers report an 80/10/10 train/val/test split without
-specifying whether it's over individual samples or over whole recordings.
-Splitting by sample risks temporal leakage (adjacent samples from the same
-recording landing in different splits), so `group_train_val_test_split`
-groups by *recording* (participant x video for GazeCom, participant for HMR)
-by default. `sample_train_val_test_split` is kept for anyone who wants to try
-matching the paper's numbers more closely despite the leakage risk.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -53,12 +28,11 @@ CLASS_NAMES_4 = {"F": "fixation", "S": "saccade", "P": "smooth_pursuit", "B": "b
 
 @dataclass(frozen=True)
 class RecordingMeta:
-    """Identifies a single continuous recording (one subject, one session/video, one eye)."""
 
     dataset: str  # "gazecom" | "hmr"
-    recording_id: str  # unique key, e.g. "AAF_beach" or "user_1_eye_0"
-    subject: str  # participant id
-    group: str  # split-grouping key: recording_id for gazecom, subject for hmr
+    recording_id: str  
+    subject: str  
+    group: str  
     fs_hz: float
     video: str | None = None  # gazecom only
     eye: str | None = None  # hmr only ("eye_0" | "eye_1")
@@ -72,7 +46,6 @@ def _read_raw_csv(path: Path) -> pd.DataFrame:
 
 
 def load_gazecom_recording(path: Path) -> tuple[pd.DataFrame, RecordingMeta]:
-    """Load one GazeCom CSV file, e.g. DATASET/data_gazecom/beach/AAF_beach.csv."""
     path = Path(path)
     video = path.parent.name
     subject = path.stem[: -(len(video) + 1)] if path.stem.endswith(f"_{video}") else path.stem
@@ -86,7 +59,6 @@ def load_gazecom_recording(path: Path) -> tuple[pd.DataFrame, RecordingMeta]:
 
 
 def load_hmr_recording(path: Path) -> tuple[pd.DataFrame, RecordingMeta]:
-    """Load one HMR CSV file, e.g. DATASET/data_hmr/user_1/eye_0.csv."""
     path = Path(path)
     subject = path.parent.name
     eye = path.stem
@@ -97,20 +69,17 @@ def load_hmr_recording(path: Path) -> tuple[pd.DataFrame, RecordingMeta]:
 
 
 def iterate_gazecom(root: Path = GAZECOM_ROOT) -> Iterator[tuple[pd.DataFrame, RecordingMeta]]:
-    """Yield (df, meta) for every GazeCom recording under `root`."""
     for csv_path in sorted(root.glob("*/*.csv")):
         yield load_gazecom_recording(csv_path)
 
 
 def iterate_hmr(root: Path = HMR_ROOT) -> Iterator[tuple[pd.DataFrame, RecordingMeta]]:
-    """Yield (df, meta) for every HMR recording (one per eye) under `root`."""
     for csv_path in sorted(root.glob("user_*/eye_*.csv")):
         yield load_hmr_recording(csv_path)
 
 
 def load_hmr_binocular(user_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, RecordingMeta]:
-    """Load both eyes for one HMR user, truncated to the common length (row counts can
-    differ by a handful of samples; no finer-grained alignment signal is available)."""
+    """Load both eyes for one HMR user"""
     user_dir = Path(user_dir)
     df0, meta0 = load_hmr_recording(user_dir / "eye_0.csv")
     df1, meta1 = load_hmr_recording(user_dir / "eye_1.csv")
@@ -139,10 +108,6 @@ class GroupSplit:
 
 def group_train_val_test_split(groups: list[str], train: float = 0.8, val: float = 0.1, test: float = 0.1, seed: int = 42) -> GroupSplit:
     """Split a list of group ids (recordings or subjects) into train/val/test.
-
-    Uses a simple shuffled partition at the group level (not sklearn's
-    GroupShuffleSplit) to keep exact proportions deterministic for a fixed
-    group list.
     """
     if not np.isclose(train + val + test, 1.0):
         raise ValueError(f"train+val+test must sum to 1.0, got {train + val + test}")
@@ -154,8 +119,6 @@ def group_train_val_test_split(groups: list[str], train: float = 0.8, val: float
     n_val = int(round(n * val))
     n_test = n - n_train - n_val
 
-    # Guard against a rounded-to-zero split with very few groups (e.g. a small
-    # --limit smoke test): steal one group from the largest split.
     counts = {"train": n_train, "val": n_val, "test": n_test}
     fractions = {"train": train, "val": val, "test": test}
     n_positive_fractions = sum(1 for f in fractions.values() if f > 0)
@@ -174,7 +137,6 @@ def group_train_val_test_split(groups: list[str], train: float = 0.8, val: float
 
 
 def sample_train_val_test_split(n_samples: int, train: float = 0.8, val: float = 0.1, test: float = 0.1, seed: int = 42) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Random per-sample split (ignores grouping); can leak adjacent-in-time samples across splits."""
     rng = np.random.default_rng(seed)
     idx = rng.permutation(n_samples)
     n_train = int(round(n_samples * train))
@@ -188,7 +150,6 @@ def sample_train_val_test_split(n_samples: int, train: float = 0.8, val: float =
 
 
 def loso_folds(groups: pd.Series | np.ndarray | list[str]) -> list[tuple[np.ndarray, np.ndarray, str]]:
-    """Leave-One-Subject/Recording-Out folds: list of (train_idx, test_idx, held_out_group)."""
     groups = np.asarray(groups)
     unique_groups = sorted(set(groups))
     folds = []
@@ -200,6 +161,5 @@ def loso_folds(groups: pd.Series | np.ndarray | list[str]) -> list[tuple[np.ndar
 
 
 def group_kfold_splits(X_len: int, groups: np.ndarray, n_splits: int = 5) -> list[tuple[np.ndarray, np.ndarray]]:
-    """Thin wrapper around sklearn's GroupKFold for consistency with the rest of the module."""
     gkf = GroupKFold(n_splits=n_splits)
     return list(gkf.split(np.zeros(X_len), groups=groups))

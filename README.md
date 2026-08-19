@@ -11,15 +11,14 @@ pipeline for classifying raw gaze samples into eye-movement events.
 - **Stage 2** takes the fixation samples from Stage 1 and further splits them
   into **microsaccade** vs. **drift/fixation**, using a **ResNet1D**
   classifier trained with a **Focal Loss** and **progressive hard-negative
-  mining** (GPU-accelerated; CPU fallback works, just slower).
+  mining** .
 
-This repository contains code and the analysis notebook only — no article
-text, no copyrighted PDFs, and no raw datasets (see [Data setup](#data-setup)).
+This repository contains code and the analysis notebook.
 
 ## Repository layout
 
 ```
-HEMC_split_CRF_HMR_RTC_public_1.ipynb   analysis notebook (HMR + RTC, both datasets in one run)
+HEMCF_Notebook.ipynb   analysis notebook (HMR + RTC, both datasets in one run)
 src/hemc/
   data.py         dataset loaders, group-aware / LOSO splitting
   features.py     point-wise kinematics, multi-scale aggregation, EMCCF / EMCCF++ feature sets
@@ -49,45 +48,34 @@ pytest tests/ -v                 # should pass with no dataset needed
 
 ## Data setup
 
-Datasets are not committed (see `.gitignore`) — place your own local copies
-under `Data/` before running the notebook:
 
 ```
 Data/
   data_hmr/user_<N>/eye_{0,1}.csv     # HMR (public reproduction dataset), 200 Hz
+  data_gazecom/subject/participant.csv     # Gazecom (public reproduction dataset), 250 Hz
   data_RTCS2/*.csv                    # RTC: private surgical-training recordings, 200 Hz
 ```
 
-- **HMR** follows the EMCCF paper's native format (`X_coord`, `Y_coord`,
+- **HMR** format (`X_coord`, `Y_coord`,
   `Confidence`, `Pattern`).
-- **RTC** is the article's own dataset (Pupil Labs Neon eye tracker, da Vinci
-  Xi robotic suturing task). It carries real microsaccade labels
-  (`classification_Kmeans`), used directly for Stage 2 — **this dataset is
-  not redistributed**: it was collected under informed consent for the
-  article's surgical-training study and is not ours to share.
+- **Gazecom** format (`X_coord`, `Y_coord`,
+  `Confidence`, `Pattern`).
+- **RTC** format (`gaze x [px]`, `gaze y [px]`, `Class`).
 
 ## Running the notebook
 
-Open `HEMC_split_CRF_HMR_RTC_public_1.ipynb` from the **repository root**
+Open `HEMCF_Notebook.ipynb` from the **repository root**
 (so relative paths to `src/` and `Data/` resolve correctly). The notebook has
 one `QUICK` toggle (top cell): `True` for a fast structural sanity check,
 `False` for the full-scale run used to produce the article's numbers.
 
 It runs, per dataset:
-1. A baseline sanity check (EMCCF++ alone, random sample split).
-2. The core result: group split (by participant) → cascade forest →
-   CRF-Viterbi, with before/after comparisons.
+1. Cascade forest → CRF-Viterbi
    - **HMR** (quantitative reference): event-wise F1 and the
-     over-segmentation ratio, before vs. after CRF-Viterbi.
-   - **RTC** (real-world "field" recordings): only the over-segmentation
-     ratio before vs. after CRF-Viterbi is reported — no model-performance
-     metrics, since that comparison is already covered by HMR.
-3. (RTC only) Stage 2: fixation vs. microsaccade, ResNet1D + Focal Loss +
-   progressive hard-negative mining, evaluated LOSO by participant, with and
-   without the progressive mining to isolate its effect.
-
-Cached per-recording features go to `cache/` (gitignored, regenerated on
-first run and reused afterward).
+     over-segmentation ratio, before vs. after CRF-Viterbi and the same for **RTC** (real-world "field" recordings)
+     
+2. (RTC only) Stage 2: fixation vs. microsaccade, ResNet1D + Focal Loss +
+   progressive hard-negative mining, evaluated LOSO by participant
 
 ## Testing
 
@@ -100,12 +88,6 @@ multi-scale aggregation shapes/edge-padding, cascade forest fit/predict on
 separable synthetic data, Viterbi decoding recovering a smooth path from a
 flickering probability sequence, event-wise IoU matching / oversegmentation
 ratio on hand-constructed sequences, and microsaccade detectors on synthetic
-drift+spike signals. No dataset or GPU required.
+drift+spike signals. No GPU required.
 
-## License / citation
 
-Code is released under the [MIT license](LICENSE) (see that file for what it
-does and doesn't cover — the RTC dataset is excluded and not redistributed).
-See [CITATION.cff](CITATION.cff) for how to cite the accompanying article
-(placeholders to be filled in once it's accepted — this work is currently
-under anonymous review).

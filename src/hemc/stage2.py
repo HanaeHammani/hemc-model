@@ -1,11 +1,4 @@
-"""Stage 2: microsaccade vs. drift classification within Stage-1-identified fixations.
-
-Pipeline: `extract_windows` slices overlapping time windows out of fixation
-segments -> `build_stage2_labels` assigns each fixation sample a MS/DRIFT
-pseudo-label (no expert-validated ground truth is available on the public
-datasets used here -- see README "Documented Assumptions") -> `HardNegativeMiner`
-selects the drift windows that most resemble microsaccades, to counter the
-~63:1 class imbalance, before training the ResNet-TS classifier (models.py).
+"""Stage 2: microsaccade vs. drift classification within Stage-1-identified fixations
 """
 from __future__ import annotations
 
@@ -25,17 +18,11 @@ NOT_APPLICABLE = ""
 
 
 # ==========================================================================
-# Windowing (HEMC article Section 3.2.1: overlapping windows, stride = 0.6 * window_size)
+# Windowing 
 # ==========================================================================
 
 
 def build_channels_monocular(x: np.ndarray, y: np.ndarray, fs_hz: float) -> tuple[np.ndarray, list[str]]:
-    """Columns: x, y, vx, vy, v, |acceleration| -- shape (T, 6).
-
-    Matches the 6-channel window construction of the article's reference
-    Stage 2 notebook (`to_6_channels`): position, per-axis velocity, speed
-    magnitude, and absolute acceleration of the speed signal.
-    """
     vx, vy = instantaneous_velocity_xy(x, y, fs_hz)
     v = np.hypot(vx, vy)
     acc = np.abs(np.gradient(v) * fs_hz)
@@ -43,7 +30,6 @@ def build_channels_monocular(x: np.ndarray, y: np.ndarray, fs_hz: float) -> tupl
 
 
 def build_channels_binocular(x_l: np.ndarray, y_l: np.ndarray, x_r: np.ndarray, y_r: np.ndarray, fs_hz: float) -> tuple[np.ndarray, list[str]]:
-    """Per-eye + mean-eye channels: x,y,vx,vy,v,acc for left, right, and mean -- shape (T, 18)."""
     left, _ = build_channels_monocular(x_l, y_l, fs_hz)
     right, _ = build_channels_monocular(x_r, y_r, fs_hz)
     x_m, y_m = (x_l + x_r) / 2.0, (y_l + y_r) / 2.0
@@ -54,7 +40,6 @@ def build_channels_binocular(x_l: np.ndarray, y_l: np.ndarray, x_r: np.ndarray, 
 
 
 def _true_segments(mask: np.ndarray) -> list[tuple[int, int]]:
-    """Contiguous (start, end) index ranges [start, end) where mask is True."""
     segments, idx = [], 0
     for value, group in groupby(mask):
         length = sum(1 for _ in group)
@@ -65,10 +50,6 @@ def _true_segments(mask: np.ndarray) -> list[tuple[int, int]]:
 
 
 def extract_windows(channels: np.ndarray, center_labels: np.ndarray, fixation_mask: np.ndarray, window_size: int, stride_fraction: float = 0.6) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Extract centered, overlapping windows fully contained within one contiguous fixation segment.
-
-    Returns (X (N, window_size, C), y (N,) center-sample labels, center_indices (N,)).
-    """
     half = window_size // 2
     stride = max(int(round(window_size * stride_fraction)), 1)
     X_list, y_list, centers = [], [], []
@@ -88,18 +69,6 @@ def extract_windows(channels: np.ndarray, center_labels: np.ndarray, fixation_ma
     return np.stack(X_list), np.array(y_list, dtype=object), np.array(centers, dtype=int)
 
 
-# ==========================================================================
-# Microsaccade / drift pseudo-labeling
-# ==========================================================================
-# GazeCom and HMR only carry the 4 macro classes (F/S/P/B); neither has
-# expert-validated microsaccade/drift labels (those came from the private
-# surgical dataset in the HEMC article). We regenerate labels using the
-# *same* semi-automated methodology the article defines (Section 2.2.2, Step
-# 2): a correlation-based detector following Sheynikhovich et al. (2018). A
-# second, independent detector (Engbert & Kliegl 2003) is provided as a
-# cross-check; `agreement_report` computes Cohen's kappa between the two as a
-# lightweight substitute for human inter-annotator agreement.
-
 
 def _fixation_segments(is_fixation: np.ndarray, min_length: int = 5) -> list[tuple[int, int]]:
     segments, idx = [], 0
@@ -112,7 +81,6 @@ def _fixation_segments(is_fixation: np.ndarray, min_length: int = 5) -> list[tup
 
 
 def detect_microsaccades_engbert_kliegl(x: np.ndarray, y: np.ndarray, fs_hz: float, lam: float = 6.0, min_duration_ms: float = 6.0, max_duration_ms: float = 100.0) -> np.ndarray:
-    """Engbert & Kliegl (2003) adaptive elliptical velocity threshold. Returns boolean mask, shape (T,)."""
     vx, vy = instantaneous_velocity_xy(x, y, fs_hz)
     sigma_x = np.sqrt(max(np.median(vx**2) - np.median(vx) ** 2, 1e-12))
     sigma_y = np.sqrt(max(np.median(vy**2) - np.median(vy) ** 2, 1e-12))
@@ -136,7 +104,7 @@ def detect_microsaccades_sheynikhovich(
     profile_half_window_ms: float = 15.0, peak_mad_k: float = 3.0, peak_mad_k_seed: float = 6.0,
     template_top_fraction: float = 0.3, min_template_seeds: int = 3,
 ) -> np.ndarray:
-    """Correlation-based microsaccade detector (Sheynikhovich et al., 2018 style). Boolean mask, shape (T,)."""
+    
     n = len(x)
     velocity = instantaneous_velocity(x, y, fs_hz)
     half_window = max(int(round(profile_half_window_ms / 1000.0 * fs_hz)), 1)
@@ -159,9 +127,7 @@ def detect_microsaccades_sheynikhovich(
     profile_ranges[profile_ranges == 0] = 1.0
     norm_profiles = (profiles - profiles.min(axis=1, keepdims=True)) / profile_ranges[:, None]
 
-    # Template from high-confidence "seed" peaks only (stricter secondary threshold):
-    # mixing in borderline candidates dilutes the template shape. Falls back to the
-    # top-K candidates by amplitude if too few seeds clear the stricter threshold.
+    
     seed_threshold = median_v + peak_mad_k_seed * mad_v
     seed_selector = velocity[peak_idx] >= seed_threshold
     if seed_selector.sum() >= min_template_seeds:
@@ -200,11 +166,6 @@ def detect_microsaccades_sheynikhovich(
 
 
 def build_stage2_labels(x: np.ndarray, y: np.ndarray, fs_hz: float, is_fixation: np.ndarray, method: str = "sheynikhovich", min_fixation_length: int = 5, **detector_kwargs) -> np.ndarray:
-    """Label every fixation sample as MICROSACCADE or DRIFT; non-fixation samples get "" (not applicable).
-
-    Detection runs independently per contiguous fixation segment (a
-    microsaccade profile from one fixation should not leak into the next).
-    """
     detector = {"sheynikhovich": detect_microsaccades_sheynikhovich, "engbert_kliegl": detect_microsaccades_engbert_kliegl}[method]
     labels = np.full(len(x), NOT_APPLICABLE, dtype=object)
     for start, end in _fixation_segments(np.asarray(is_fixation, dtype=bool), min_length=min_fixation_length):
@@ -214,8 +175,6 @@ def build_stage2_labels(x: np.ndarray, y: np.ndarray, fs_hz: float, is_fixation:
 
 
 def agreement_report(labels_a: np.ndarray, labels_b: np.ndarray) -> dict:
-    """Cohen's kappa + confusion matrix between two detectors' labels, restricted to positions
-    where both labels are applicable (i.e. within fixation for both)."""
     valid = (labels_a != NOT_APPLICABLE) & (labels_b != NOT_APPLICABLE)
     a, b = labels_a[valid], labels_b[valid]
     if len(a) == 0:
@@ -226,17 +185,8 @@ def agreement_report(labels_a: np.ndarray, labels_b: np.ndarray) -> dict:
 
 
 # ==========================================================================
-# Hard negative mining (HEMC article Section 3.2.2)
+# Hard negative mining 
 # ==========================================================================
-# Microsaccades are rare vs. drift (~63:1). A preliminary model is trained on
-# an 8:1 drift:microsaccade set, used to score all drift windows for
-# similarity to microsaccades. Drift windows in the 10th-50th percentile of
-# scores (descending -- excluding the top 10%, likely near-mislabeled
-# outliers, and anything below the 50th percentile, trivially easy to
-# separate) are the "hard negatives". The final training set combines all
-# microsaccade windows with sampled hard negatives at a 4:1 ratio.
-
-
 @dataclass
 class HardNegativeMiningResult:
     X_hard_negatives: np.ndarray  # (n_selected, window_size, n_channels)

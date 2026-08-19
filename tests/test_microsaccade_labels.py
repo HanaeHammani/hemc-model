@@ -10,7 +10,6 @@ from hemc.stage2 import (
 
 def _synthetic_fixation_with_microsaccades(fs_hz=200.0, n=1000, spike_centers=(100, 300, 500, 700, 900), seed=0):
     rng = np.random.default_rng(seed)
-    # slow fixational drift: tiny-amplitude random walk
     x = np.cumsum(rng.normal(0, 0.0003, n))
     y = np.cumsum(rng.normal(0, 0.0003, n))
 

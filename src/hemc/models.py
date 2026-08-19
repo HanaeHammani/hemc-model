@@ -1,6 +1,3 @@
-"""Models: CascadeForestClassifier (Stage 1), SequentialCRFDecoder + Viterbi (Stage 1
-temporal smoothing), and ResNetTS (Stage 2 microsaccade/drift classifier).
-"""
 from __future__ import annotations
 
 import warnings
@@ -19,26 +16,14 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.preprocessing import KBinsDiscretizer
 from xgboost import XGBClassifier
 
-# Harmless and expected on small samples / near-duplicate feature values (quantile
-# bin edges collapse); scoped by message so unrelated warnings still surface.
 warnings.filterwarnings("ignore", message="Bins whose width are too small.*", category=UserWarning)
 
 _EPS = 1e-12
 
 
 # ==========================================================================
-# Cascade Forest (EMCCF / EMCCF++ Stage 1 classifier)
+# Cascade Forest 
 # ==========================================================================
-# Architecture (EMCCF paper, Section II-C, Fig. 4): a "Binner" (feature
-# discretization) precedes every cascade layer; each layer combines four base
-# classifiers (RF, ExtraTrees, XGBoost, LightGBM) whose concatenated
-# class-probability vectors augment the *original* (binned) input features for
-# the next layer. Depth is adaptive: growth stops once a new layer fails to
-# improve validation macro-F1. Implementation choices the paper leaves
-# unspecified (32 quantile bins, out-of-fold class vectors via 5-fold CV,
-# macro-F1 stopping criterion) are documented in the README.
-
-
 def _make_base_learners(n_estimators: int, n_classes: int, random_state: int, n_jobs: int) -> dict:
     return {
         "rf": RandomForestClassifier(n_estimators=n_estimators, random_state=random_state, n_jobs=n_jobs),
@@ -59,8 +44,7 @@ class _Layer:
 
 
 class CascadeForestClassifier:
-    """Layered ensemble (RF + ERF + XGB + LGB) with adaptive depth, as in EMCCF/EMCCF++."""
-
+    
     def __init__(self, n_estimators_per_forest: int = 100, n_bins: int = 32, max_layers: int = 20,
                  cv_folds: int = 5, tol: float = 1e-4, random_state: int = 0, n_jobs: int = -1, verbose: bool = True):
         self.n_estimators_per_forest = n_estimators_per_forest
@@ -166,18 +150,9 @@ class CascadeForestClassifier:
 
 
 # ==========================================================================
-# Sequential CRF-Viterbi decoder (Stage 1 temporal smoothing)
+# Sequential CRF-Viterbi decoder 
 # ==========================================================================
-# Per the HEMC article (Section 3.1.3): a contextual feature vector is built
-# per sample from the cascade forest's class-probability sequence, fed to a
-# multinomial logistic regression acting as a simplified linear-chain CRF, and
-# the resulting smoothed probabilities are decoded with Viterbi using a
-# physiologically calibrated transition matrix (geometric stay-or-leave model
-# based on each class's mean physiological duration).
-
-
 def estimate_mean_durations_ms(label_seqs: list[np.ndarray], class_names: list[str], fs_hz: float) -> dict[str, float]:
-    """Mean physiological duration (ms) per class, from run-length encoding of training label sequences."""
     run_lengths: dict[str, list[int]] = {c: [] for c in class_names}
     for seq in label_seqs:
         for label, group in groupby(seq):
@@ -193,7 +168,6 @@ def estimate_mean_durations_ms(label_seqs: list[np.ndarray], class_names: list[s
 
 
 def estimate_transition_counts(label_seqs: list[np.ndarray], class_names: list[str]) -> pd.DataFrame:
-    """Empirical class-to-class transition counts (off-diagonal, i.e. at event boundaries only)."""
     idx = {c: i for i, c in enumerate(class_names)}
     counts = np.zeros((len(class_names), len(class_names)))
     for seq in label_seqs:
@@ -205,10 +179,7 @@ def estimate_transition_counts(label_seqs: list[np.ndarray], class_names: list[s
 
 
 def build_transition_matrix(class_names: list[str], mean_durations_ms: dict[str, float], fs_hz: float, transition_counts: pd.DataFrame | None = None) -> np.ndarray:
-    """Geometric stay-or-leave transition matrix: P(stay|i) = (D_i*f/1000 - 1) / (D_i*f/1000).
-
-    Off-diagonal mass is distributed among the other classes proportional to
-    empirical transition frequencies (falls back to uniform without those counts).
+    """transition matrix: P(stay|i) = (D_i*f/1000 - 1) / (D_i*f/1000)
     """
     n = len(class_names)
     mat = np.zeros((n, n))
@@ -229,7 +200,6 @@ def build_transition_matrix(class_names: list[str], mean_durations_ms: dict[str,
 
 
 class SequentialCRFDecoder:
-    """Contextual feature builder + logistic-regression "linear-chain CRF" for sequence smoothing."""
 
     def __init__(self, class_names: list[str], context_k: int = 5, momentum_window: int = 5, random_state: int = 0, max_iter: int = 3000):
         self.class_names = class_names
@@ -240,7 +210,6 @@ class SequentialCRFDecoder:
         self.clf: LogisticRegression | None = None
 
     def build_context_features(self, proba_seq: np.ndarray, mean_durations_ms: dict[str, float], fs_hz: float) -> np.ndarray:
-        """proba_seq: (T, C) base classifier probabilities -> (T, D) contextual feature matrix."""
         T, C = proba_seq.shape
         k = self.context_k
 
@@ -289,7 +258,6 @@ class SequentialCRFDecoder:
 
 
 def viterbi_decode(log_proba: np.ndarray, transition_matrix: np.ndarray, class_names: list[str], start_prior: np.ndarray | None = None) -> list[str]:
-    """Standard log-domain Viterbi decoding. log_proba: (T, C) emission log-probabilities."""
     T, C = log_proba.shape
     log_trans = np.log(np.clip(transition_matrix, _EPS, 1.0))
     if start_prior is None:
@@ -313,18 +281,9 @@ def viterbi_decode(log_proba: np.ndarray, transition_matrix: np.ndarray, class_n
 
 
 # ==========================================================================
-# ResNet-TS (Stage 2 microsaccade/drift classifier)
+# ResNet-TS 
 # ==========================================================================
-# Residual 1D-CNN with squeeze-and-excitation attention for time-series
-# classification (HEMC article, Section 3.2.3). Three stacked convolutions
-# (kernel sizes 8/5/3) with a shortcut connection per block (Fawaz et al.
-# 2019), extended with an SE channel-attention module per block. Input
-# convention: (batch, channels, time) -- transpose (B, T, C) windows before
-# feeding the model.
-
-
 class SEBlock1D(nn.Module):
-    """Squeeze-and-excitation channel attention for (B, C, T) feature maps."""
 
     def __init__(self, channels: int, reduction: int = 8):
         super().__init__()
@@ -374,7 +333,6 @@ class ResNetTS(nn.Module):
         self.head = nn.Linear(prev, n_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """x: (B, C, T) -> logits (B, n_classes)."""
         out = self.blocks(x)
         pooled = out.mean(dim=-1)
         return self.head(pooled)

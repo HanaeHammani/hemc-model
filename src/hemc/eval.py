@@ -1,4 +1,3 @@
-"""Evaluation metrics: point-wise (per-sample) and event-wise (segmentation-aware)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +14,6 @@ from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 
 
 def pointwise_report(y_true: np.ndarray, y_pred: np.ndarray, class_names: list[str]) -> pd.DataFrame:
-    """Per-class precision/recall/F1 + macro row, as a tidy DataFrame."""
     precision, recall, f1, support = precision_recall_fscore_support(y_true, y_pred, labels=class_names, zero_division=0)
     df = pd.DataFrame({"precision": precision, "recall": recall, "f1": f1, "support": support}, index=class_names)
     macro = df[["precision", "recall", "f1"]].mean()
@@ -29,22 +27,15 @@ def pointwise_confusion(y_true: np.ndarray, y_pred: np.ndarray, class_names: lis
 
 
 # ==========================================================================
-# Event-wise (segmentation-aware) metrics
+# Event-wise metrics
 # ==========================================================================
-# Point-wise classifiers tend to fragment physiologically continuous events
-# into many short, implausible predicted segments ("temporal
-# over-segmentation"). This converts label sequences into contiguous events
-# and evaluates at that level: events are matched via greedy
-# highest-IoU-first one-to-one matching (threshold 0.5), and an
-# "oversegmentation ratio" (predicted events / true events per class)
-# quantifies fragmentation independently of raw classification accuracy.
 
 
 @dataclass(frozen=True)
 class Event:
     label: str
-    start: int  # inclusive
-    end: int  # exclusive
+    start: int 
+    end: int  
 
 
 def labels_to_events(labels: np.ndarray) -> list[Event]:
@@ -64,10 +55,6 @@ def _iou(a: Event, b: Event) -> float:
 
 
 def match_events(pred_events: list[Event], true_events: list[Event], class_name: str, iou_thr: float = 0.5):
-    """Greedy highest-IoU-first one-to-one matching restricted to one class.
-
-    Returns (n_matched, n_pred_of_class, n_true_of_class).
-    """
     preds = [e for e in pred_events if e.label == class_name]
     trues = [e for e in true_events if e.label == class_name]
     pairs = [(_iou(p, t), i, j) for i, p in enumerate(preds) for j, t in enumerate(trues) if _iou(p, t) >= iou_thr]
@@ -85,7 +72,6 @@ def match_events(pred_events: list[Event], true_events: list[Event], class_name:
 
 
 def event_wise_report(pred_labels: np.ndarray, true_labels: np.ndarray, class_names: list[str], iou_thr: float = 0.5) -> pd.DataFrame:
-    """Per-class event precision/recall/F1 (IoU-matched) + oversegmentation ratio."""
     pred_events = labels_to_events(pred_labels)
     true_events = labels_to_events(true_labels)
 

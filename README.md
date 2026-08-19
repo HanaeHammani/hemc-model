@@ -56,11 +56,7 @@ Data/
   data_RTCS2/*.csv                    # RTC: private surgical-training recordings, 200 Hz
 ```
 
-- **HMR** format (`X_coord`, `Y_coord`,
-  `Confidence`, `Pattern`).
-- **Gazecom** format (`X_coord`, `Y_coord`,
-  `Confidence`, `Pattern`).
-- **RTC** format (`gaze x [px]`, `gaze y [px]`, `Class`).
+- Datatsets are available at https://osf.io/kj8u5/overview
 
 ## Running the notebook
 

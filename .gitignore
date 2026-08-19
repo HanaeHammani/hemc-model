@@ -44,3 +44,4 @@ Thumbs.db
 *.log
 log_*.txt
 Data/data_RTC/*.csv
+.osfcli.config
